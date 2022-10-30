@@ -158,7 +158,7 @@ class DataPrepper:
                             total_clicked_docs_per_query += 1
                         num_impressions.append(query_times_seen)
                         clicks.append(num_clicks)
-                        if hit['_source'].get('name') is not None:
+                        if len(hit['_source'].get('name', [])) > 0:
                             product_names.append(hit['_source']['name'][0])
                         else:
                             product_names.append("SKU: %s -- No Name" % sku)
@@ -234,24 +234,38 @@ class DataPrepper:
         log_query = lu.create_feature_log_query(key, query_doc_ids, click_prior_query, self.featureset_name,
                                                 self.ltr_store_name,
                                                 size=len(query_doc_ids), terms_field=terms_field)
+        result = self.opensearch.search(log_query)
         ##### Step Extract LTR Logged Features:
         # IMPLEMENT_START --
-        print("IMPLEMENT ME: __log_ltr_query_features: Extract log features out of the LTR:EXT response and place in a data frame")
         # Loop over the hits structure returned by running `log_query` and then extract out the features from the response per query_id and doc id.  Also capture and return all query/doc pairs that didn't return features
         # Your structure should look like the data frame below
         feature_results = {}
         feature_results["doc_id"] = []  # capture the doc id so we can join later
         feature_results["query_id"] = []  # ^^^
         feature_results["sku"] = []
-        feature_results["name_match"] = []
-        rng = np.random.default_rng(12345)
+        for hit in result['hits']['hits']:
+            feature_results["doc_id"].append(hit['_id'])  # capture the doc id so we can join later
+            feature_results["query_id"].append(int(query_id))
+            feature_results["sku"].append(int(hit['_source']['sku'][0]))
+            for feature in hit['fields']['_ltrlog'][0]['log_entry']:
+                if not feature_results.get(feature['name'], None):
+                    feature_results[feature['name']] = []
+
+                feature_results[feature['name']].append(feature.get('value', 0))
+                assert len(feature_results[feature['name']]) == len(feature_results["doc_id"])
         for doc_id in query_doc_ids:
-            feature_results["doc_id"].append(doc_id)  # capture the doc id so we can join later
-            feature_results["query_id"].append(query_id)
-            feature_results["sku"].append(doc_id)  
-            feature_results["name_match"].append(rng.random())
+            if doc_id not in feature_results["doc_id"]:
+                no_results[doc_id] = key
+
         frame = pd.DataFrame(feature_results)
-        return frame.astype({'doc_id': 'int64', 'query_id': 'int64', 'sku': 'int64'})
+        frame = frame.astype({
+            'doc_id': 'int64',
+            'query_id': 'int64',
+            'sku': 'int64',
+        })
+        # if len(no_results) > 0 and len(frame[frame['name_match_phrase'] > 0]) > 0:
+        #     __import__('pdb').set_trace()
+        return frame
         # IMPLEMENT_END
 
     # Can try out normalizing data, but for XGb, you really don't have to since it is just finding splits
