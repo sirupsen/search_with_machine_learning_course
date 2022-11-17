@@ -3,10 +3,12 @@
 from opensearchpy import OpenSearch
 import warnings
 import sys
+import fasttext
 warnings.filterwarnings("ignore", category=FutureWarning)
 import argparse
 import json
 import os
+import pdb
 from getpass import getpass
 from urllib.parse import urljoin
 import pandas as pd
@@ -192,12 +194,24 @@ def create_query(user_query, click_prior_query, filters, sort="_score",
         query_obj["_source"] = source
     return query_obj
 
+model = fasttext.load_model("second.bin")
 
 def search(client, user_query, index="bbuy_products", sort="_score", sortDir="desc", synonyms=False):
     #### W3: classify the query
+    labels, probs = model.predict(user_query)
+    print("Predicted label: ", labels[0], probs[0])
+    filters = []
+    if probs[0] > 0.5:
+        filters.append({
+            "term": {
+                "categoryPathIds": labels[0].split("__")[2],
+            }
+        })
+
+
     #### W3: create filters and boosts
     # Note: you may also want to modify the `create_query` method above
-    query_obj = create_query(user_query, click_prior_query=None, filters=None,
+    query_obj = create_query(user_query, click_prior_query=None, filters=filters,
                              sort=sort, sortDir=sortDir, source=["name",
                                                                  "shortDescription"],
                              synonyms=synonyms)
