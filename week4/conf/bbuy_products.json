@@ -402,6 +402,15 @@
             "ignore_above": 256
           }
         }
+      },
+      "name_embedding": {
+        "type": "knn_vector",
+        "dimension": 384,
+        "method": {
+            "name": "hnsw",
+            "space_type": "cosinesimil",
+            "engine": "nmslib"
+        }
       }
     }
   }

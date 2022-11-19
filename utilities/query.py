@@ -13,12 +13,31 @@ from getpass import getpass
 from urllib.parse import urljoin
 import pandas as pd
 import fileinput
+from sentence_transformers import SentenceTransformer
 import logging
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(levelname)s:%(message)s')
+st_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+def vector_search(client, user_query, index="bbuy_products"):
+    embedding = st_model.encode(user_query)
+    query_obj = {
+        "query": {
+            "knn": {
+                "name_embedding": {
+                    "vector": embedding,
+                    "k": 10,
+                }
+            }
+        }
+    }
+
+    response = client.search(query_obj, index=index)
+    if len(response['hits']['hits']) > 0:
+        print(response['hits'])
 
 # expects clicks and impressions to be in the row
 def create_prior_queries_from_group(
@@ -232,6 +251,8 @@ if __name__ == "__main__":
                          help='The name of the main index to search')
     general.add_argument('--synonyms', action='store_true',
                          help='Enable synonym search')
+    general.add_argument('--vector', action='store_true', 
+                        help='Use this flag to do query using semantic vector search')
     general.add_argument("-s", '--host', default="localhost",
                          help='The OpenSearch host name')
     general.add_argument("-p", '--port', type=int, default=9200,
@@ -271,5 +292,8 @@ if __name__ == "__main__":
         query = line.rstrip()
         if query == "Exit":
             break
-        search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms)
+        if args.vector:
+            vector_search(client=opensearch, user_query=query, index=index_name)
+        else:
+            search(client=opensearch, user_query=query, index=index_name, synonyms=args.synonyms)
         print(query_prompt)
